@@ -4,14 +4,19 @@ import com.Messenger.Backend.entity.ChatData;
 import com.Messenger.Backend.entity.MessageData;
 import com.Messenger.Backend.entity.UserData;
 import com.Messenger.Backend.model.ChatMessage;
+import com.Messenger.Backend.model.FriendChatInfo;
 import com.Messenger.Backend.repo.ChatRepository;
 import com.Messenger.Backend.repo.MessageRepository;
 import com.Messenger.Backend.repo.UserRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -32,13 +37,18 @@ public class UserService {
         return userData.getUsername();
     }
 
+    public String getFriendName(String id){
+        Optional<UserData> userData = userRepository.findById(id);
+        return userData.get().getUsername();
+    }
+
     public String getUserId(String email){
         UserData userData = userRepository.findByEmail(email);
         return userData.getId();
     }
 
     public List<String> getChatIds(String userId){
-        List<ChatData> chatDataList = chatRepository.findByUser1Id(userId);
+        List<ChatData> chatDataList = chatRepository.findByUser1IdOrUser2Id(userId);
         List<String> chatIds = new ArrayList<>();
         for (ChatData chat : chatDataList){
             chatIds.add(chat.getChatId());
@@ -46,14 +56,34 @@ public class UserService {
         return chatIds;
     }
 
-    public List<String> getFriendIds(String userId){
-        List<ChatData> chatDataList = chatRepository.findByUser1Id(userId);
-        List<String> friendIds = new ArrayList<>();
-        for (ChatData chat : chatDataList){
-            friendIds.add(chat.getUser2Id());
+    public List<FriendChatInfo> getFriendIds(String userId){
+        List<ChatData> chatDataList = chatRepository.findByUser1IdOrUser2Id(userId);
+        List<FriendChatInfo> friendChatInfoList = new ArrayList<>();
+
+        for (ChatData chat : chatDataList) {
+            String user1Id = chat.getUser1Id();
+            String user2Id = chat.getUser2Id();
+            String friendUserId = user1Id.equals(userId) ? user2Id:user1Id;
+            String friendUserName = getFriendName(friendUserId);
+
+            friendChatInfoList.add(new FriendChatInfo(friendUserId,chat.getChatId(),friendUserName));
+
         }
-        return friendIds;
+
+        return friendChatInfoList;
+
+//        List<String> friendIds = new ArrayList<>();
+//        for (ChatData chat : chatDataList){
+//            if (chat.getUser2Id().equals(userId)){
+//                friendIds.add(chat.getUser1Id());
+//            } else {
+//                friendIds.add(chat.getUser2Id());
+//            }
+//        }
+//        return friendIds;
     }
+
+
 
     // From a list of UserIds, get a corresponding list of User names
     public List<String> getUserNames(List<String> friendIds){
@@ -89,7 +119,7 @@ public class UserService {
             }
             chatMessages.addAll(combinedMessages);
         });
-
+        Collections.sort(chatMessages, Comparator.comparing(ChatMessage::getTimestamp));
         return chatMessages;
     }
 }

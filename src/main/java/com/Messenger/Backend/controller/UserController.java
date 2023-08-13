@@ -1,6 +1,7 @@
 package com.Messenger.Backend.controller;
 
 import com.Messenger.Backend.model.ChatMessage;
+import com.Messenger.Backend.model.FriendChatInfo;
 import com.Messenger.Backend.repo.UserRepository;
 import com.Messenger.Backend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @Slf4j
@@ -25,12 +27,12 @@ public class UserController {
     }
 
     @GetMapping("/getChatNames/{email}")
-    public List<String> getChatNames(@PathVariable String email) {
+    public List<FriendChatInfo> getChatNames(@PathVariable String email) {
         log.info("Username = {}", email);
         String userId = userService.getUserId(email);
-        List<String> friendIds = userService.getFriendIds(userId);
-        List<String> chatNames = userService.getUserNames(friendIds);
-        return chatNames;
+        List<FriendChatInfo> chatInfo = userService.getFriendIds(userId);
+
+        return chatInfo;
     }
 
     @GetMapping("/getMessage/{chatId}")
