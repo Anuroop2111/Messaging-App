@@ -1,7 +1,9 @@
 package com.Messenger.Backend.controller;
 
+import com.Messenger.Backend.model.JwtTokenValidateResponse;
 import com.Messenger.Backend.model.UserCredentials;
 import com.Messenger.Backend.service.CustomUserDetailService;
+import com.Messenger.Backend.service.JwtService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.server.Http2;
 import org.springframework.http.HttpStatus;
@@ -20,13 +22,16 @@ public class AuthenticationController {
 
     private final PasswordEncoder passwordEncoder;
 
-    public AuthenticationController(CustomUserDetailService userDetailsService, PasswordEncoder passwordEncoder) {
+    private final JwtService jwtService;
+
+    public AuthenticationController(CustomUserDetailService userDetailsService, PasswordEncoder passwordEncoder,JwtService jwtService) {
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
     }
 
     @PostMapping("/authenticateUser")
-    public ResponseEntity<Void> authenticate(@RequestBody UserCredentials userCredentials){
+    public ResponseEntity<JwtTokenValidateResponse> authenticate(@RequestBody UserCredentials userCredentials){
         // if username is empty
         if (userCredentials.getUsername()==null){
             log.error("Username is empty");
@@ -37,7 +42,9 @@ public class AuthenticationController {
         if (userDetails!=null){
             if (passwordEncoder.matches(userCredentials.getPassword(),userDetails.getPassword())){
                 log.info("User validated successfully = {}", userCredentials.getUsername());
-                return ResponseEntity.ok().build();
+                JwtTokenValidateResponse jwtResponse = jwtService.generateTokens(userCredentials.getUsername());
+                log.info(jwtResponse.toString());
+                return ResponseEntity.ok(jwtResponse);
             }
         }
 //        return ResponseEntity.ok().build();

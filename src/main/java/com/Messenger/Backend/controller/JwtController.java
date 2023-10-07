@@ -2,7 +2,7 @@ package com.Messenger.Backend.controller;
 
 
 import com.Messenger.Backend.model.JwtTokenValidateResponse;
-import com.Messenger.Backend.model.LoginData;
+//import com.Messenger.Backend.model.LoginData;
 import com.Messenger.Backend.service.JwtService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -45,10 +45,10 @@ public class JwtController {
      * @return ResponseEntity containing the generated JWT token.
      * @throws Exception if an error occurs during token generation.
      */
-    @PostMapping("/generateToken")
-    public ResponseEntity<JwtTokenValidateResponse> generateToken(@RequestBody LoginData loginData) throws Exception {
-        return jwtService.generateTokens(loginData);
-    }
+//    @PostMapping("/generateToken")
+//    public ResponseEntity<JwtTokenValidateResponse> generateToken(@RequestBody LoginData loginData) throws Exception {
+//        return jwtService.generateTokens(loginData);
+//    }
 
     /**
      * Deletes the refresh token and associated session data from Redis.
