@@ -4,6 +4,7 @@ package com.Messenger.Backend.controller;
 import com.Messenger.Backend.model.JwtTokenValidateResponse;
 //import com.Messenger.Backend.model.LoginData;
 import com.Messenger.Backend.service.JwtService;
+import com.Messenger.Backend.service.JwtServiceInterface;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,7 +19,7 @@ import java.util.Map;
 @RequestMapping("/authenticate")
 public class JwtController {
 
-    private final JwtService jwtService;
+    private final JwtServiceInterface jwtService;
 
     public JwtController(JwtService jwtService){
         this.jwtService = jwtService;
@@ -60,7 +61,6 @@ public class JwtController {
     @PostMapping("/refresh-session/delete")
     public void deleteRefreshTokenAndSession(String jwtToken, String username, String sessionId) {
         jwtService.deleteTokens(jwtToken, username);
-        jwtService.deleteSession(sessionId, username);
     }
 
 }

@@ -11,7 +11,7 @@ public interface JwtServiceInterface {
 
 
 
-    String generateAndStoreRefreshToken(String username, String uniqueIdentifier, String refSeries);
+    String generateAndStoreRefreshToken(String username, String refSeries);
 
     ResponseEntity<JwtTokenValidateResponse> extractAndValidate(@RequestBody Map<String, Object> requestPayload);
 
@@ -19,9 +19,9 @@ public interface JwtServiceInterface {
 
     boolean validateRefreshToken(String refreshToken);
 
-    ResponseEntity<JwtTokenValidateResponse> generateTokens(String username);
+    JwtTokenValidateResponse generateTokens(String username);
 
     void deleteTokens(String jwtToken, String username);
 
-    void deleteSession(String sessionId, String username);
+
 }

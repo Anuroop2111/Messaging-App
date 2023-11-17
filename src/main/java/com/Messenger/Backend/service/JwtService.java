@@ -1,13 +1,16 @@
 package com.Messenger.Backend.service;
 
 import com.Messenger.Backend.entity.TokenData;
+import com.Messenger.Backend.model.JwtInfoData;
+import com.Messenger.Backend.model.JwtTokenValidateResponse;
+import com.Messenger.Backend.model.JwtValidationData;
 import com.Messenger.Backend.repo.TokenRepository;
 import com.Messenger.Backend.util.JwtUtil;
-import com.Messenger.Backend.model.*;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.security.SignatureException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 
@@ -16,15 +19,13 @@ import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
-@Service
-public class JwtService {
+@Component
+public class JwtService implements JwtServiceInterface{
     private final JwtUtil jwtUtil;
-    private final RedisService redisService;
 
     private final TokenRepository tokenRepository;
 
-    public JwtService(JwtUtil jwtUtil, RedisService redisService, TokenRepository tokenRepository) {
-        this.redisService = redisService;
+    public JwtService(JwtUtil jwtUtil, TokenRepository tokenRepository) {
         this.jwtUtil = jwtUtil;
         this.tokenRepository = tokenRepository;
 
@@ -33,14 +34,12 @@ public class JwtService {
     /**
      * Generates a JWT token, stores it in Redis, and returns the generated token.
      *
-     * @param username @return The generated JWT token.
+     * @param username  @return The generated JWT token.
      * @param refSeries
      */
 
     public String generateAndStoreJwt(String username, String refSeries) {
         String jwtToken = jwtUtil.generateToken(username, refSeries); //Generate a new jwt token.
-        String redisKey = String.format("%s-%s",username,refSeries); // The redis key is 'username-jwt'
-        redisService.setKeyValue(redisKey, jwtToken); // Set JwtToken as Value
         return jwtToken;
     }
 
@@ -73,7 +72,7 @@ public class JwtService {
         return refSeries;
     }
 
-    public ResponseEntity<JwtTokenValidateResponse> extractAndValidate(@RequestBody Map<String, Object> requestPayload){
+    public ResponseEntity<JwtTokenValidateResponse> extractAndValidate(@RequestBody Map<String, Object> requestPayload) {
         String jwtToken = (String) requestPayload.get("jwtToken"); // Extract the JWT token from the request payload.
 //        String uniqueIdentifier = (String) requestPayload.get("uniqueIdentifier"); // This can be passed on to the methods as required.
         String username;
@@ -91,11 +90,11 @@ public class JwtService {
             if (username != null) {
                 // 1. If JWT is expired. Then check the DB for Refresh Token.
                 if (isJwtExpiredFlag) {
-                    return refreshAndHandleExpiredJwt(refSeries,username,jwtToken);
+                    return refreshAndHandleExpiredJwt(refSeries, username, jwtToken);
                 }
 
                 // 2. If JWT is not expired.
-                return handleNonExpiredJwt(refSeries,username,jwtToken);
+                return handleNonExpiredJwt(refSeries, username, jwtToken);
             }
         }
         // If JWT Token is not found or if the username is null, the user should log in.
@@ -113,28 +112,21 @@ public class JwtService {
     public JwtValidationData validateJwtToken(String jwtToken) {
 
         boolean isJwtAboutToExpire;
-        isJwtAboutToExpire = jwtUtil.isTokenAboutToGetExpired(jwtToken);
+        try {
+            isJwtAboutToExpire = jwtUtil.isTokenAboutToGetExpired(jwtToken);
+        }catch(SignatureException e){
+            return createJwtResponse(false,false);
+        }
         String refSeries = jwtUtil.getRefSeriesFromToken(jwtToken);
         String username = jwtUtil.getUsernameFromToken(jwtToken);
 
-        // Now check in redis.
-        String redisKey = String.format("%s-%s",username,refSeries);
-        String redisValue = redisService.getValueFromCache(redisKey).orElse(null);
-        if (redisValue != null && redisValue.equals(jwtToken)) {
-            log.info("'username : jwt' pair found in Redis. For user = {}",username);
-            return createJwtResponse(true, isJwtAboutToExpire);
+        try {
+            // Check if a valid refresh Token is available.
+            return getRefreshTokenExpiryData(isJwtAboutToExpire, refSeries, username);
 
-        } else { // If not found in redis check for Refresh Token instead in UserDB.
-            try {
-                log.warn("username : jwt pair not found in Redis. For user = {}",username);
-
-                // Check if a valid refresh Token is available.
-                return getRefreshTokenExpiryData(isJwtAboutToExpire, refSeries, username);
-
-            } catch (Exception e) { // If not found in DB also return false.
-                log.error(".User = {}. Some issue happened with checking for Refresh Token (when the jwt is not found in redis): {} " ,username,e.getMessage());
-                return createJwtResponse(false, isJwtAboutToExpire);
-            }
+        } catch (Exception e) { // If not found in DB also return false.
+            log.error(".User = {}. Some issue happened with checking for Refresh Token (when the jwt is not found in redis): {} ", username, e.getMessage());
+            return createJwtResponse(false, isJwtAboutToExpire);
         }
     }
 
@@ -152,20 +144,20 @@ public class JwtService {
         try {
             refreshTokenUsername = jwtUtil.getUsernameFromToken(refreshToken);
         } catch (IllegalArgumentException e) {
-            log.error("Unable to get Refresh Token -> IllegalArgumentException for refreshToken = {}",refreshToken);
+            log.error("Unable to get Refresh Token -> IllegalArgumentException for refreshToken = {}", refreshToken);
             return false;
         } catch (ExpiredJwtException e) {
-            log.warn("Refresh Token has expired : {}",refreshToken);
+            log.warn("Refresh Token has expired : {}", refreshToken);
             return false;
         }
         return refreshTokenUsername != null;
     }
 
-    public JwtTokenValidateResponse generateTokens(String username){
+    public JwtTokenValidateResponse generateTokens(String username) {
 //        String username = loginData.getUsername();
 //        String uniqueIdentifier = loginData.getUniqueIdentifier();
-        String refSeries = generateAndStoreRefreshToken(username,null); // Generate Refresh Token and add in DB. Returns RefSeries.
-        String jwtToken = generateAndStoreJwt(username,refSeries); // Generate Jwt and add as cookie in response (Need to change to add in response, flag=true) + add it in redis
+        String refSeries = generateAndStoreRefreshToken(username, null); // Generate Refresh Token and add in DB. Returns RefSeries.
+        String jwtToken = generateAndStoreJwt(username, refSeries); // Generate Jwt and add as cookie in response (Need to change to add in response, flag=true) + add it in redis
 
         // Create the response model with the JWT token and flags
         JwtTokenValidateResponse responseModel = JwtTokenValidateResponse.builder()
@@ -175,12 +167,12 @@ public class JwtService {
                 .username(username)
                 .build();
 
-        log.info("JWT token and Refresh Token generated successfully. JWT Token set as cookie as well as stored in Redis and Refresh Token stored in Database. For user = {}",username);
+        log.info("JWT token and Refresh Token generated successfully. JWT Token set as cookie as well as stored in Redis and Refresh Token stored in Database. For user = {}", username);
         return responseModel;
     }
 
-    public void deleteTokens(String jwtToken, String username){
-        log.info("Delete Refresh Token and Redis getting called. For user = {}",username);
+    public void deleteTokens(String jwtToken, String username) {
+        log.info("Delete Refresh Token and Redis getting called. For user = {}", username);
         String refSeries;
 
         if (jwtToken != null) {
@@ -192,21 +184,8 @@ public class JwtService {
             // Delete Refresh Token from DB.
             tokenRepository.deleteByRefSeriesAndUsername(refSeries, username);
 
-            // Delete JWT from Redis.
-            String redisKey = String.format("%s-%s",username,refSeries);
-            redisService.deleteKey(redisKey);
+
         }
-    }
-
-    public void deleteSession(String sessionId, String username){
-        String sessionKey = "spring:session:sessions:" + sessionId;
-        redisService.deleteKey(sessionKey);
-//
-        String sessionExpired = "spring:session:sessions:expires:" + sessionId;
-        redisService.deleteKey(sessionExpired);
-
-        String sessionPrincipal = "spring:session:index:org.springframework.session.FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME:" + username;
-        redisService.deleteKey(sessionPrincipal);
     }
 
 
@@ -265,12 +244,12 @@ public class JwtService {
         } catch (IllegalArgumentException e) {
             log.error("Unable to get JWT Token -> IllegalArgumentException. For user = {}", username);
         } catch (SignatureException e) {
-            log.warn("JWT has been tampered. For user = {}",username);
+            log.warn("JWT has been tampered. For user = {}", username);
             // Logout the user.
 
         } catch (
                 ExpiredJwtException e) { // If the JWT is expired we will decode and extract the username and check for Refresh Token. In this case, we don't check the redis.
-            log.warn("JWT Token has expired for user = {}",username);
+            log.warn("JWT Token has expired for user = {}", username);
             isJwtExpiredFlag = true;
             username = jwtUtil.getUsernameFromExpiredToken(jwtToken);
             refSeries = jwtUtil.getRefSeriesFromExpiredToken(jwtToken);
@@ -287,7 +266,7 @@ public class JwtService {
         return jwtInfo;
     }
 
-    private ResponseEntity<JwtTokenValidateResponse> refreshAndHandleExpiredJwt(String refSeries, String username, String jwtToken){
+    private ResponseEntity<JwtTokenValidateResponse> refreshAndHandleExpiredJwt(String refSeries, String username, String jwtToken) {
         //                    TokenData tokenData = tokenRepository.findByUsernameAndUniqueId(username,userAgent);
         TokenData tokenData = tokenRepository.findByRefSeriesAndUsername(refSeries, username);
 
@@ -317,11 +296,7 @@ public class JwtService {
         // From jwt we will get refSeries. From refSeries we will get tokenData. Now, check if UserAgent and Username are equal from the Client Side and DB.
         if (refreshToken != null && validateRefreshToken(refreshToken)) { // If Refresh Token is not null, validate the Refresh Token -> Checking for expiry of Refresh Token.  && userAgent.equals(tokenData.getUniqueIdentifier())
 
-            TokenData tokenData = tokenRepository.findByRefSeriesAndUsername(refSeries,username);
-
-//            Remove the previous username_refSeries key-value from the Redis
-            String redisKey = String.format("%s-%s",username,refSeries);
-            redisService.deleteKey(redisKey);
+            TokenData tokenData = tokenRepository.findByRefSeriesAndUsername(refSeries, username);
 
             // Create the new refSeries. And also set it in the token Repository.
             refSeries = jwtUtil.generateRefSeries();
@@ -336,37 +311,28 @@ public class JwtService {
 
             refSeries = jwtUtil.getRefSeriesFromToken(jwtToken);
 
-//          Add the new username_refSeries to Redis
-            redisKey = String.format("%s-%s",username,refSeries);
-            redisService.setKeyValue(redisKey, jwtToken);
-
             log.info("JWT expired. Refresh Token is valid. Refreshed JWT Token + added in redis and response for user = {}", username);
 
         } else { // If the Refresh Token is null or Invalid (expired).
             tokenRepository.deleteByRefSeriesAndUsername(refSeries, username);
-
-            // Delete JWT from Redis
-            String redisKey = String.format("%s-%s",username,refSeries);
-            redisService.deleteKey(redisKey);
-
             log.warn("Refresh Token is Invalid or expired for user = {}", username);
         }
 
         return jwtToken;
     }
 
-    private ResponseEntity<JwtTokenValidateResponse> handleNonExpiredJwt(String refSeries, String username, String jwtToken){
+    private ResponseEntity<JwtTokenValidateResponse> handleNonExpiredJwt(String refSeries, String username, String jwtToken) {
         JwtValidationData validationMap = validateJwtToken(jwtToken); // Will get two flags. isValid and jwtAboutToExpire.
 
         boolean isValid = validationMap.isValid();
         boolean isJwtAboutToExpire = validationMap.isJwtAboutToExpire();
 
         if (isValid && !isJwtAboutToExpire) {
-            log.info("JWT is valid, no need to update in the cookie and the user is also valid = {}",username);
+            log.info("JWT is valid, no need to update in the cookie and the user is also valid = {}", username);
             return ResponseEntity.ok(createResponse(jwtToken, false, false, username));
 
         } else if (isValid) {
-            log.warn("Jwt valid, but about to expire for user = {}",username);
+            log.warn("Jwt valid, but about to expire for user = {}", username);
             // jwt is about to expire, follow the steps of the expired Jwt. This is called, if the jwt was not expired, but got expired when it reaches this step. Maybe Redundant, and can be removed.
             TokenData tokenData = tokenRepository.findByRefSeriesAndUsername(refSeries, username);
             if (tokenData == null) {
